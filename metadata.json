@@ -1,0 +1,6 @@
+{
+  "name": "Image to Excel Converter",
+  "description": "An application to upload images of data tables or grids and convert them into structured Excel files using multimodal Gemini AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
