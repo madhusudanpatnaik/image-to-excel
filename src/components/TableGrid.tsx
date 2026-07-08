@@ -43,7 +43,13 @@ export default function TableGrid({ table, onUpdateTable }: TableGridProps) {
   const [showSourceImage, setShowSourceImage] = useState(true);
   const [zoom, setZoom] = useState(100);
   const [invertImageColors, setInvertImageColors] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  // Reset image error on table change
+  React.useEffect(() => {
+    setImageError(false);
+  }, [table.id]);
 
   // Filters rows based on query
   const filteredRowsWithIndices = useMemo(() => {
@@ -660,22 +666,33 @@ export default function TableGrid({ table, onUpdateTable }: TableGridProps) {
             </div>
 
             {/* Scrollable Image Area */}
-            <div className="flex-1 overflow-auto bg-slate-200/50 dark:bg-slate-950/30 flex items-start justify-center p-4">
-              <div 
-                className="transition-all duration-150 flex items-center justify-center"
-                style={{ 
-                  width: `${zoom}%`, 
-                  maxWidth: 'none', 
-                  filter: invertImageColors ? 'invert(1) hue-rotate(180deg)' : 'none' 
-                }}
-              >
-                <img
-                  src={table.thumbnail}
-                  alt="Original Document Grid Source"
-                  className="shadow-lg border border-slate-300 dark:border-slate-800 rounded-md w-full h-auto object-contain select-none"
-                  draggable={false}
-                />
-              </div>
+            <div className="flex-1 overflow-auto bg-slate-200/50 dark:bg-slate-950/30 flex items-center justify-center p-4">
+              {imageError ? (
+                <div className="text-center p-6 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg max-w-xs shadow-xs">
+                  <EyeOff className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+                  <h4 className="text-xs font-semibold text-slate-700 dark:text-slate-300">Thumbnail Not Found</h4>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
+                    The source image for this sample dataset is not on disk, but you can upload any of your own screenshot files to view the split-screen verification tool!
+                  </p>
+                </div>
+              ) : (
+                <div 
+                  className="transition-all duration-150 flex items-center justify-center"
+                  style={{ 
+                    width: `${zoom}%`, 
+                    maxWidth: 'none', 
+                    filter: invertImageColors ? 'invert(1) hue-rotate(180deg)' : 'none' 
+                  }}
+                >
+                  <img
+                    src={table.thumbnail}
+                    alt="Original Document Grid Source"
+                    className="shadow-lg border border-slate-300 dark:border-slate-800 rounded-md w-full h-auto object-contain select-none"
+                    draggable={false}
+                    onError={() => setImageError(true)}
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}

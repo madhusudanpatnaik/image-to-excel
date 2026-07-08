@@ -14,7 +14,11 @@ import {
   X,
   PlusCircle,
   Combine,
-  ArrowRight
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  BookOpen,
+  Cpu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -25,6 +29,7 @@ export default function App() {
   });
   const [selectedTableId, setSelectedTableId] = useState<string>('sample_1');
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(0); // Default open the first one!
 
   // Handle uploading and processing files via Express backend
   const handleImagesSelected = async (files: File[]) => {
@@ -91,7 +96,7 @@ export default function App() {
           if (item.id === placeholder.id) {
             return {
               ...item,
-              tableName: data.tableName || item.tableName,
+              tableName: (item.tableName && item.tableName !== "Importing Sheet...") ? item.tableName : (data.tableName || item.tableName),
               headers: data.headers && data.headers.length > 0 ? data.headers : ['A', 'B'],
               rows: data.rows && data.rows.length > 0 ? data.rows : [['', '']],
               status: 'completed' as const
@@ -339,6 +344,180 @@ export default function App() {
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
+        </div>
+
+        {/* AI Enterprise Scaling & Consolidation FAQ / Consultation Section */}
+        <div className="mt-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 md:p-8 shadow-xs">
+          <div className="flex items-center gap-2.5 mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <BookOpen className="h-5.5 w-5.5 text-emerald-600 animate-pulse" />
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                Enterprise Scale & Table Consolidation Hub
+              </h2>
+              <p className="text-xs text-slate-400 dark:text-slate-500">
+                Technical guidance, pipeline blueprints, and scale insights for processing thousands of document screenshots.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* Accordion Item 1 */}
+            <div className="border border-slate-100 dark:border-slate-850 rounded-xl overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => setExpandedFaq(expandedFaq === 0 ? null : 0)}
+                className="w-full px-5 py-4 flex items-center justify-between gap-4 text-left font-semibold text-sm text-slate-800 dark:text-slate-200 bg-slate-50/50 dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-850/50 transition-colors focus:outline-hidden"
+              >
+                <span className="flex items-center gap-2.5">
+                  <Combine className="h-4 w-4 text-purple-500 shrink-0" />
+                  <span>How do I merge/consolidate multiple tables into a single master sheet?</span>
+                </span>
+                {expandedFaq === 0 ? <ChevronUp className="h-4 w-4 text-slate-400 shrink-0" /> : <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />}
+              </button>
+              
+              <AnimatePresence initial={false}>
+                {expandedFaq === 0 && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden bg-white dark:bg-slate-950/20"
+                  >
+                    <div className="p-5 text-sm text-slate-600 dark:text-slate-400 border-t border-slate-100 dark:border-slate-850 leading-relaxed space-y-2.5">
+                      <p>
+                        Our interface includes a powerful schema-aware **Table Consolidation Engine**. You can stitch together sections of a single continuous long grid report that was split across several screenshot uploads:
+                      </p>
+                      <ul className="list-disc pl-5 space-y-1 text-xs">
+                        <li>**Step 1:** Select the checkbox next to each complete sheet in the sidebar list (you must select at least two).</li>
+                        <li>**Step 2:** Click the purple **"Consolidate (N)"** button that dynamically appears on the sidebar header.</li>
+                        <li>**Step 3:** Enter a custom name for the consolidated output sheet (e.g., *"Q4 Master Ledger"*) and click **"Merge Sheets"**.</li>
+                      </ul>
+                      <p className="text-xs text-slate-500">
+                        **Behind the scenes:** The merge engine maps all unique header names across every selected sheet, vertically concatenates the records, and automatically aligns cell values to matching headers while populating missing values with empty fields.
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Accordion Item 2 */}
+            <div className="border border-slate-100 dark:border-slate-850 rounded-xl overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => setExpandedFaq(expandedFaq === 1 ? null : 1)}
+                className="w-full px-5 py-4 flex items-center justify-between gap-4 text-left font-semibold text-sm text-slate-800 dark:text-slate-200 bg-slate-50/50 dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-850/50 transition-colors focus:outline-hidden"
+              >
+                <span className="flex items-center gap-2.5">
+                  <Cpu className="h-4 w-4 text-emerald-500 shrink-0" />
+                  <span>Can we extract 250 screenshots at once and merge them into a single Excel file?</span>
+                </span>
+                {expandedFaq === 1 ? <ChevronUp className="h-4 w-4 text-slate-400 shrink-0" /> : <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />}
+              </button>
+              
+              <AnimatePresence initial={false}>
+                {expandedFaq === 1 && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden bg-white dark:bg-slate-950/20"
+                  >
+                    <div className="p-5 text-sm text-slate-600 dark:text-slate-400 border-t border-slate-100 dark:border-slate-850 leading-relaxed space-y-3">
+                      <p>
+                        **Yes, absolutely!** However, attempting to process 250 images in a single monolithic API call or a single browser request is technically impossible and highly discouraged due to fundamental platform constraints:
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-2 text-xs">
+                        <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg">
+                          <span className="font-bold text-slate-800 dark:text-slate-200 block mb-1">Payload & Timeout Limits</span>
+                          250 high-res screenshots sum to roughly **250MB–500MB**. Uploading this in one HTTP request would exceed web server body limits (often 50MB) and hit browser connection timeouts.
+                        </div>
+                        <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg">
+                          <span className="font-bold text-slate-800 dark:text-slate-200 block mb-1">Model Output Token Cap</span>
+                          While Gemini can swallow millions of tokens, model *output* generation is capped (usually 8,192 tokens). Serializing thousands of rows of data into a single text output exceeds this cap.
+                        </div>
+                        <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg">
+                          <span className="font-bold text-slate-800 dark:text-slate-200 block mb-1">API Rate Throttling</span>
+                          Public LLM endpoints enforce Requests Per Minute (RPM) limits. Sending 250 simultaneous requests in parallel would trigger HTTP 429 Rate Limit errors immediately.
+                        </div>
+                      </div>
+                      <p className="text-xs">
+                        **How this Web App handles it:** To make multiple uploads reliable, our front-end already implements a **Sequential Queueing Mechanism**. When you select or drop multiple images, the system places placeholders in the sidebar and processes them orderly, one after another. This keeps browser memory stable, prevents rate-limit penalties, and lets you monitor progress in real-time before downloading!
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Accordion Item 3 */}
+            <div className="border border-slate-100 dark:border-slate-850 rounded-xl overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => setExpandedFaq(expandedFaq === 2 ? null : 2)}
+                className="w-full px-5 py-4 flex items-center justify-between gap-4 text-left font-semibold text-sm text-slate-800 dark:text-slate-200 bg-slate-50/50 dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-850/50 transition-colors focus:outline-hidden"
+              >
+                <span className="flex items-center gap-2.5">
+                  <Sparkles className="h-4 w-4 text-purple-500 shrink-0" />
+                  <span>What is the recommended blueprint for large-scale enterprise automation?</span>
+                </span>
+                {expandedFaq === 2 ? <ChevronUp className="h-4 w-4 text-slate-400 shrink-0" /> : <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />}
+              </button>
+              
+              <AnimatePresence initial={false}>
+                {expandedFaq === 2 && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden bg-white dark:bg-slate-950/20"
+                  >
+                    <div className="p-5 text-sm text-slate-600 dark:text-slate-400 border-t border-slate-100 dark:border-slate-850 leading-relaxed space-y-3">
+                      <p>
+                        For corporate environments that frequently ingest high volumes (e.g., 250 to 5,000 document screenshots daily), the gold standard is an **Asynchronous Batch Processing Pipeline**:
+                      </p>
+                      <div className="space-y-3 text-xs">
+                        <div className="flex items-start gap-3">
+                          <div className="h-5 w-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">1</div>
+                          <div>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">Asynchronous Ingestion Bucket:</span>
+                            Images are uploaded to an object storage bucket (e.g. Google Cloud Storage). This fires a notification to initiate the process without making the user wait on an HTTP request.
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="h-5 w-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">2</div>
+                          <div>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">Background Workers (Cloud Run Jobs / Celery):</span>
+                            A decoupled job consumer processes the files. It handles rate-limits, implements exponential backoffs (on HTTP 429), and queries Gemini in structured JSON format to enforce precise data types.
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="h-5 w-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">3</div>
+                          <div>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">Relational Database or Document Landing Store:</span>
+                            Parsed row records are stored table-by-table or row-by-row in databases like Firestore or Cloud SQL (PostgreSQL), allowing partial results to be queried, edited, or checked in real-time.
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="h-5 w-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">4</div>
+                          <div>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">Scheduled Consolidation & Binary Generator:</span>
+                            A final aggregation task selects all processed records, merges their columns aligning identical names, and builds a massive workbook binary using `xlsx` (SheetJS) on the server, sending an email or webhook with a download link when complete.
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-3 text-xs text-purple-700 dark:text-purple-300 mt-2">
+                        **Enterprise Benefit:** This asynchronous pattern isolates slow tasks, handles transient API failures gracefully, provides status polling endpoints, and delivers a robust, hands-free automation workspace.
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
       </main>
