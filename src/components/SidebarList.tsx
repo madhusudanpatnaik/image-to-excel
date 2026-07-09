@@ -33,6 +33,10 @@ export default function SidebarList({
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
   const [mergedName, setMergedName] = useState('Master Consolidated Sheet');
 
+  const completedTables = tables.filter(t => t.status === 'completed');
+  const allCompletedIds = completedTables.map(t => t.id);
+  const isAllSelected = allCompletedIds.length > 0 && allCompletedIds.every(id => !!selectedForMerge[id]);
+
   const handleToggleMergeSelect = (id: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Avoid selecting the sheet for viewing
     setSelectedForMerge(prev => ({
@@ -167,6 +171,35 @@ export default function SidebarList({
           </motion.button>
         )}
       </div>
+
+      {/* Select All Toggle for Consolidation */}
+      {completedTables.length > 0 && (
+        <div className="flex items-center justify-between px-2.5 py-2 mb-3 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/60">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isAllSelected}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                const newSelection: Record<string, boolean> = {};
+                if (checked) {
+                  allCompletedIds.forEach(id => {
+                    newSelection[id] = true;
+                  });
+                }
+                setSelectedForMerge(newSelection);
+              }}
+              className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-slate-700 rounded-sm shrink-0 cursor-pointer"
+            />
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+              {isAllSelected ? "Deselect All" : "Select All for Consolidation"}
+            </span>
+          </label>
+          <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
+            {selectedCount} / {completedTables.length} selected
+          </span>
+        </div>
+      )}
 
       {/* Table categories list */}
       <div className="grow overflow-y-auto pr-1">
