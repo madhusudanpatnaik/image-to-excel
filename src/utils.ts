@@ -80,25 +80,79 @@ export function mergeTables(tables: TableData[], mergedName: string): TableData 
     throw new Error("No tables selected to merge");
   }
   
-  // Gather all unique headers across all selected tables, keeping ordering consistent
-  const uniqueHeadersSet = new Set<string>();
-  tables.forEach(table => {
-    table.headers.forEach(hdr => uniqueHeadersSet.add(hdr.trim()));
+  // Sort tables by filename or tablename if available to ensure correct page sequence order!
+  const sortedTables = [...tables].sort((a, b) => {
+    const nameA = a.fileName || a.tableName || '';
+    const nameB = b.fileName || b.tableName || '';
+    return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
   });
-  const masterHeaders = Array.from(uniqueHeadersSet);
-  
+
+  // Check if they have meaningful header overlap
+  let hasOverlap = false;
+  const headerUsageCount: Record<string, number> = {};
+  sortedTables.forEach(table => {
+    table.headers.forEach(h => {
+      const trimmed = h ? h.trim() : '';
+      if (trimmed && !trimmed.toLowerCase().startsWith('column')) {
+        headerUsageCount[trimmed] = (headerUsageCount[trimmed] || 0) + 1;
+        if (headerUsageCount[trimmed] > 1) {
+          hasOverlap = true;
+        }
+      }
+    });
+  });
+
+  let masterHeaders: string[] = [];
   const mergedRows: string[][] = [];
-  
-  for (const table of tables) {
-    for (const row of table.rows) {
-      const newRow = Array(masterHeaders.length).fill('');
-      table.headers.forEach((hdr, colIdx) => {
-        const masterColIdx = masterHeaders.indexOf(hdr.trim());
-        if (masterColIdx !== -1) {
-          newRow[masterColIdx] = row[colIdx] || '';
+
+  if (hasOverlap) {
+    // Merge by aligning header names
+    const uniqueHeadersSet = new Set<string>();
+    sortedTables.forEach(table => {
+      table.headers.forEach(hdr => {
+        if (hdr && hdr.trim()) {
+          uniqueHeadersSet.add(hdr.trim());
         }
       });
-      mergedRows.push(newRow);
+    });
+    masterHeaders = Array.from(uniqueHeadersSet);
+    if (masterHeaders.length === 0) {
+      masterHeaders = ['Column 1'];
+    }
+
+    for (const table of sortedTables) {
+      for (const row of table.rows) {
+        const newRow = Array(masterHeaders.length).fill('');
+        table.headers.forEach((hdr, colIdx) => {
+          const trimmedHdr = hdr ? hdr.trim() : '';
+          const masterColIdx = masterHeaders.indexOf(trimmedHdr);
+          if (masterColIdx !== -1) {
+            newRow[masterColIdx] = row[colIdx] || '';
+          }
+        });
+        mergedRows.push(newRow);
+      }
+    }
+  } else {
+    // No overlapping headers (e.g. generic Column 1, Column 2) or completely different names.
+    // Merge by column index! Use the maximum column count.
+    const maxCols = Math.max(...sortedTables.map(t => Math.max(t.headers.length, t.rows[0]?.length || 0)));
+    
+    // We can use the headers of the first table, padded if necessary
+    const firstTable = sortedTables[0];
+    masterHeaders = [...firstTable.headers];
+    while (masterHeaders.length < maxCols) {
+      masterHeaders.push(`Column ${masterHeaders.length + 1}`);
+    }
+
+    for (const table of sortedTables) {
+      for (const row of table.rows) {
+        const newRow = Array(maxCols).fill('');
+        for (let i = 0; i < maxCols; i++) {
+          newRow[i] = row[i] || '';
+        }
+        mergedRows.push(newRow);
+      }
     }
   }
   
@@ -110,3 +164,96 @@ export function mergeTables(tables: TableData[], mergedName: string): TableData 
     status: 'completed'
   };
 }
+
+// Simple IndexedDB wrapper for full persistence of TableData across page refreshes
+const DB_NAME = 'ImageToExcelDB';
+const STORE_NAME = 'tables';
+const DB_VERSION = 1;
+
+function getDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = (e) => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function saveAllTablesToDB(tables: TableData[]): Promise<void> {
+  try {
+    const db = await getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const clearRequest = store.clear();
+      
+      clearRequest.onsuccess = () => {
+        if (tables.length === 0) {
+          resolve();
+          return;
+        }
+        let count = 0;
+        let errored = false;
+        
+        for (const table of tables) {
+          // Remove any non-serializable objects if they exist
+          const serializedTable = {
+            id: table.id,
+            tableName: table.tableName,
+            headers: table.headers,
+            rows: table.rows,
+            fileName: table.fileName,
+            fileSize: table.fileSize,
+            thumbnail: table.thumbnail,
+            status: table.status,
+            error: table.error,
+            base64Data: table.base64Data,
+            fileType: table.fileType
+          };
+          
+          const request = store.put(serializedTable);
+          request.onsuccess = () => {
+            count++;
+            if (count === tables.length && !errored) {
+              resolve();
+            }
+          };
+          request.onerror = () => {
+            if (!errored) {
+              errored = true;
+              reject(request.error);
+            }
+          };
+        }
+      };
+      
+      clearRequest.onerror = () => reject(clearRequest.error);
+    });
+  } catch (err) {
+    console.error("IndexedDB save all error:", err);
+  }
+}
+
+export async function loadTablesFromDB(): Promise<TableData[]> {
+  try {
+    const db = await getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readonly');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.getAll();
+      request.onsuccess = () => {
+        resolve(request.result || []);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  } catch (err) {
+    console.error("IndexedDB load error:", err);
+    return [];
+  }
+}
+

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TableData } from './types';
 import { SAMPLE_TABLES } from './data';
-import { fileToBase64, formatBytes, mergeTables } from './utils';
+import { fileToBase64, formatBytes, mergeTables, loadTablesFromDB, saveAllTablesToDB } from './utils';
 import ImageDropzone from './components/ImageDropzone';
 import TableGrid from './components/TableGrid';
 import SidebarList from './components/SidebarList';
@@ -22,14 +22,93 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+// Helper utility to make robust fetch requests with exponential backoff on transient errors (like 503, 429)
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = 3,
+  initialDelayMs = 1500
+): Promise<Response> {
+  let attempt = 0;
+  while (true) {
+    try {
+      const response = await fetch(url, options);
+      
+      // Check if we hit a 503 Service Unavailable or 429 Rate Limit
+      if ((response.status === 503 || response.status === 429) && attempt < maxRetries) {
+        attempt++;
+        const delay = initialDelayMs * Math.pow(2, attempt - 1);
+        console.warn(`Encountered status ${response.status} (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms...`);
+        
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(resolve, delay);
+          if (options.signal) {
+            options.signal.addEventListener('abort', () => {
+              clearTimeout(timeout);
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          }
+        });
+        continue;
+      }
+      return response;
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        throw error;
+      }
+      if (attempt < maxRetries) {
+        attempt++;
+        const delay = initialDelayMs * Math.pow(2, attempt - 1);
+        console.warn(`Fetch connection error: ${error.message || error} (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms...`);
+        
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(resolve, delay);
+          if (options.signal) {
+            options.signal.addEventListener('abort', () => {
+              clearTimeout(timeout);
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          }
+        });
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 export default function App() {
-  const [tables, setTables] = useState<TableData[]>(() => {
-    // Start with the polished sample tables so the application has data immediately
-    return [...SAMPLE_TABLES];
-  });
-  const [selectedTableId, setSelectedTableId] = useState<string>('sample_1');
+  const [tables, setTables] = useState<TableData[]>([]);
+  const [selectedTableId, setSelectedTableId] = useState<string>('');
+  const [dbLoaded, setDbLoaded] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0); // Default open the first one!
+
+  const abortControllersRef = useRef<Record<string, AbortController>>({});
+
+  // Load from IndexedDB on mount
+  useEffect(() => {
+    async function init() {
+      const stored = await loadTablesFromDB();
+      if (stored && stored.length > 0) {
+        setTables(stored);
+        setSelectedTableId(stored[0].id);
+      } else {
+        // Fallback to defaults
+        setTables([...SAMPLE_TABLES]);
+        setSelectedTableId('sample_1');
+      }
+      setDbLoaded(true);
+    }
+    init();
+  }, []);
+
+  // Save to IndexedDB when tables change
+  useEffect(() => {
+    if (dbLoaded) {
+      saveAllTablesToDB(tables);
+    }
+  }, [tables, dbLoaded]);
 
   // Handle uploading and processing files via Express backend
   const handleImagesSelected = async (files: File[]) => {
@@ -53,27 +132,32 @@ export default function App() {
     setTables(prev => [...newPlaceholders, ...prev]);
     setSelectedTableId(newPlaceholders[0].id);
 
-    // Process each file sequentially or in parallel
-    for (const placeholder of newPlaceholders) {
-      const file = files[newPlaceholders.indexOf(placeholder)];
+    // Process each file in parallel concurrently!
+    newPlaceholders.forEach(async (placeholder, idx) => {
+      const file = files[idx];
+      const controller = new AbortController();
+      abortControllersRef.current[placeholder.id] = controller;
+
       try {
         // Convert to base64
         const base64Image = await fileToBase64(file);
         const thumbUrl = `data:${file.type};base64,${base64Image}`;
         
-        // Progressively set the thumbnail so it's visible in loading states
+        // Progressively set the thumbnail and base64 references so it's visible and retryable
         setTables(prev => prev.map(item => {
           if (item.id === placeholder.id) {
             return {
               ...item,
-              thumbnail: thumbUrl
+              thumbnail: thumbUrl,
+              base64Data: base64Image,
+              fileType: file.type
             };
           }
           return item;
         }));
         
-        // Call Express Server Endpoint
-        const response = await fetch('/api/extract', {
+        // Call Express Server Endpoint with robust exponential backoff retry on 503/429
+        const response = await fetchWithRetry('/api/extract', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -82,6 +166,7 @@ export default function App() {
             image: base64Image,
             mimeType: file.type
           }),
+          signal: controller.signal
         });
 
         if (!response.ok) {
@@ -106,6 +191,10 @@ export default function App() {
         }));
 
       } catch (err: any) {
+        if (err.name === 'AbortError') {
+          console.log(`Processing for ${file.name} was aborted.`);
+          return;
+        }
         console.error("Error processing image:", err);
         const errorMsg = err.message || "Failed to extract table data. Ensure the image is clear and contains a visible grid.";
         
@@ -121,6 +210,118 @@ export default function App() {
         }));
 
         setGlobalError(`Failed to process "${file.name}": ${errorMsg}`);
+      } finally {
+        if (abortControllersRef.current[placeholder.id] === controller) {
+          delete abortControllersRef.current[placeholder.id];
+        }
+      }
+    });
+  };
+
+  // Stop/cancel an active extraction process
+  const handleCancelExtraction = (id: string) => {
+    const controller = abortControllersRef.current[id];
+    if (controller) {
+      controller.abort();
+      delete abortControllersRef.current[id];
+    }
+    
+    setTables(prev => prev.map(item => {
+      if (item.id === id) {
+        return {
+          ...item,
+          status: 'failed' as const,
+          error: "Canceled by user."
+        };
+      }
+      return item;
+    }));
+  };
+
+  // Retry processing a failed image
+  const handleRetryTable = async (id: string) => {
+    const tableToRetry = tables.find(t => t.id === id);
+    if (!tableToRetry || !tableToRetry.base64Data) {
+      setGlobalError("Cannot retry: Image source data is missing. Please re-upload.");
+      return;
+    }
+
+    setGlobalError(null);
+
+    // Set status back to 'processing'
+    setTables(prev => prev.map(item => {
+      if (item.id === id) {
+        return {
+          ...item,
+          status: 'processing' as const,
+          error: undefined
+        };
+      }
+      return item;
+    }));
+    setSelectedTableId(id);
+
+    const controller = new AbortController();
+    abortControllersRef.current[id] = controller;
+
+    try {
+      // Call Express Server Endpoint with robust exponential backoff retry on 503/429
+      const response = await fetchWithRetry('/api/extract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image: tableToRetry.base64Data,
+          mimeType: tableToRetry.fileType || "image/png"
+        }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || `HTTP ${response.status} Error`);
+      }
+
+      const data = await response.json();
+
+      // Update placeholder with parsed data
+      setTables(prev => prev.map(item => {
+        if (item.id === id) {
+          return {
+            ...item,
+            tableName: (item.tableName && item.tableName !== "Importing Sheet...") ? item.tableName : (data.tableName || item.tableName),
+            headers: data.headers && data.headers.length > 0 ? data.headers : ['A', 'B'],
+            rows: data.rows && data.rows.length > 0 ? data.rows : [['', '']],
+            status: 'completed' as const
+          };
+        }
+        return item;
+      }));
+
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log(`Retry for ${tableToRetry.fileName || 'table'} was aborted.`);
+        return;
+      }
+      console.error("Error retrying image processing:", err);
+      const errorMsg = err.message || "Failed to extract table data. Ensure the image is clear and contains a visible grid.";
+      
+      setTables(prev => prev.map(item => {
+        if (item.id === id) {
+          return {
+            ...item,
+            status: 'failed' as const,
+            error: errorMsg
+          };
+        }
+        return item;
+      }));
+
+      setGlobalError(`Failed to process "${tableToRetry.fileName || 'Image'}": ${errorMsg}`);
+    } finally {
+      if (abortControllersRef.current[id] === controller) {
+        delete abortControllersRef.current[id];
       }
     }
   };
@@ -264,6 +465,8 @@ export default function App() {
                 }}
                 onDeleteTable={handleDeleteTable}
                 onMergeTables={handleMergeTables}
+                onRetryTable={handleRetryTable}
+                onCancelExtraction={handleCancelExtraction}
               />
             </div>
           </div>
@@ -296,6 +499,13 @@ export default function App() {
                           File: {activeTable.fileName} ({activeTable.fileSize})
                         </p>
                       </div>
+                      <button
+                        onClick={() => handleCancelExtraction(activeTable.id)}
+                        className="mt-6 px-4 py-2 text-xs font-semibold text-rose-600 hover:text-white dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 hover:bg-rose-600 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        <span>Stop / Cancel Extraction</span>
+                      </button>
                     </div>
                   ) : activeTable.status === 'failed' ? (
                     /* Error state for a particular table */
@@ -309,12 +519,23 @@ export default function App() {
                       <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mb-6 leading-relaxed">
                         {activeTable.error || "Gemini was unable to structures table data from this screenshot. Please ensure it contains readable text organized in rows and columns."}
                       </p>
-                      <button
-                        onClick={() => handleDeleteTable(activeTable.id)}
-                        className="px-4 py-2 text-sm font-semibold text-rose-600 hover:text-white border border-rose-200 dark:border-rose-900 hover:bg-rose-600 rounded-lg transition-colors"
-                      >
-                        Remove Failed Sheet
-                      </button>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleRetryTable(activeTable.id)}
+                          className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-lg transition-colors shadow-sm flex items-center gap-2"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89" />
+                          </svg>
+                          <span>Retry Extraction</span>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTable(activeTable.id)}
+                          className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                        >
+                          Remove Failed Sheet
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     /* Main Table Grid Workspace */

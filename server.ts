@@ -29,6 +29,42 @@ const getGeminiClient = () => {
   });
 };
 
+// Robust helper to execute Gemini generateContent with automatic retry on transient errors (503, 429, etc.)
+async function generateContentWithRetry(ai: any, params: any, maxRetries = 4, initialDelayMs = 2000) {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      return await ai.models.generateContent(params);
+    } catch (error: any) {
+      attempt++;
+      const status = error.status || error.code || (error.error && error.error.code);
+      const message = error.message || (error.error && error.error.message) || "";
+      
+      const isTransient = 
+        status === 429 || 
+        status === 503 || 
+        message.includes("high demand") || 
+        message.includes("RESOURCE_EXHAUSTED") ||
+        message.includes("UNAVAILABLE") ||
+        message.includes("overloaded") ||
+        message.includes("experiencing high demand") ||
+        message.includes("temporary") ||
+        message.includes("Service Unavailable") ||
+        message.includes("Rate limit");
+      
+      if (isTransient && attempt < maxRetries) {
+        // Exponential backoff: e.g. 2s, 4s, 8s, 16s
+        const delay = initialDelayMs * Math.pow(2, attempt - 1);
+        console.warn(`Gemini API transient error (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms... Error:`, message);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new Error("Max retries exceeded for Gemini API");
+}
+
 // API endpoint for extracting table data from image
 app.post("/api/extract", async (req, res) => {
   try {
@@ -50,7 +86,7 @@ app.post("/api/extract", async (req, res) => {
       text: "Analyze this image and extract all structured data or tables into a JSON format. Make sure to capture every row and column. If cells are merged or empty, handle them properly. Propose column headers if they are missing or unclear.",
     };
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithRetry(ai, {
       model: "gemini-3.5-flash",
       contents: { parts: [imagePart, textPart] },
       config: {

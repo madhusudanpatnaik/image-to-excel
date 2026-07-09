@@ -8,6 +8,8 @@ export interface TableData {
   thumbnail?: string;
   status: 'idle' | 'processing' | 'completed' | 'failed';
   error?: string;
+  base64Data?: string;
+  fileType?: string;
 }
 
 export interface CellSelection {

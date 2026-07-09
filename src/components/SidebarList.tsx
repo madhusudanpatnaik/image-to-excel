@@ -9,7 +9,8 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  HelpCircle
+  HelpCircle,
+  RefreshCw
 } from 'lucide-react';
 import { TableData } from '../types';
 import { motion } from 'motion/react';
@@ -20,6 +21,8 @@ interface SidebarListProps {
   onSelectTable: (id: string) => void;
   onDeleteTable: (id: string) => void;
   onMergeTables: (selectedIds: string[], mergedName: string) => void;
+  onRetryTable?: (id: string) => void;
+  onCancelExtraction?: (id: string) => void;
 }
 
 export default function SidebarList({
@@ -27,7 +30,9 @@ export default function SidebarList({
   selectedTableId,
   onSelectTable,
   onDeleteTable,
-  onMergeTables
+  onMergeTables,
+  onRetryTable,
+  onCancelExtraction
 }: SidebarListProps) {
   const [selectedForMerge, setSelectedForMerge] = useState<Record<string, boolean>>({});
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
@@ -78,9 +83,7 @@ export default function SidebarList({
             : "border-slate-100 dark:border-slate-900 hover:border-slate-200 dark:hover:border-slate-800 bg-white dark:bg-slate-950"
         }`}
         onClick={() => {
-          if (table.status === 'completed') {
-            onSelectTable(table.id);
-          }
+          onSelectTable(table.id);
         }}
       >
         <div className="flex items-center gap-3 overflow-hidden">
@@ -131,19 +134,45 @@ export default function SidebarList({
           </div>
         </div>
 
-        {/* Delete action */}
-        {table.status !== 'processing' && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDeleteTable(table.id);
-            }}
-            className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-500 p-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-900 transition-all shrink-0"
-            title="Delete table"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        )}
+        {/* Action buttons */}
+        <div className="flex items-center gap-1 shrink-0">
+          {table.status === 'processing' && onCancelExtraction && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancelExtraction(table.id);
+              }}
+              className="text-rose-500 hover:text-rose-600 dark:text-rose-450 dark:hover:text-rose-400 p-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-all shrink-0"
+              title="Stop Extraction"
+            >
+              <XCircle className="h-4 w-4" />
+            </button>
+          )}
+          {table.status === 'failed' && onRetryTable && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRetryTable(table.id);
+              }}
+              className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-500 dark:hover:text-emerald-400 p-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-all shrink-0"
+              title="Retry Extraction"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {table.status !== 'processing' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteTable(table.id);
+              }}
+              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-500 p-1.5 rounded-md hover:bg-slate-50 dark:hover:bg-slate-900 transition-all shrink-0"
+              title="Delete table"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </motion.div>
     );
   };
