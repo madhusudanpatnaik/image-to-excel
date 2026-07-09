@@ -10,10 +10,12 @@ import {
   CheckCircle2,
   XCircle,
   HelpCircle,
-  RefreshCw
+  RefreshCw,
+  Download
 } from 'lucide-react';
 import { TableData } from '../types';
 import { motion } from 'motion/react';
+import { exportAllToExcel } from '../utils';
 
 interface SidebarListProps {
   tables: TableData[];
@@ -179,56 +181,84 @@ export default function SidebarList({
 
   return (
     <div className="w-full flex flex-col h-full">
-      {/* List Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-1.5">
-          <Layers className="h-4.5 w-4.5 text-slate-500 dark:text-slate-400" />
-          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Sheets & Documents
-          </h3>
+      {/* Sticky Top Toolbar containing Actions and Controls */}
+      <div className="sticky -mt-5 pt-5 top-0 bg-white dark:bg-slate-900 z-20 pb-1 mb-3 border-b border-slate-100 dark:border-slate-800/80">
+        {/* List Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-1.5">
+            <Layers className="h-4.5 w-4.5 text-slate-500 dark:text-slate-400" />
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Sheets & Documents
+            </h3>
+          </div>
+
+          {selectedCount >= 2 && (
+            <motion.button
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              onClick={() => setIsMergeModalOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-purple-600 hover:text-white bg-purple-50 dark:bg-purple-950/20 hover:bg-purple-600 dark:hover:bg-purple-600 border border-purple-200 dark:border-purple-900 rounded-lg transition-colors shadow-xs shrink-0 cursor-pointer"
+            >
+              <Combine className="h-3.5 w-3.5" />
+              <span>Consolidate ({selectedCount})</span>
+            </motion.button>
+          )}
         </div>
 
-        {selectedCount >= 2 && (
-          <motion.button
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            onClick={() => setIsMergeModalOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-purple-600 hover:text-white bg-purple-50 dark:bg-purple-950/20 hover:bg-purple-600 dark:hover:bg-purple-600 border border-purple-200 dark:border-purple-900 rounded-lg transition-colors shadow-xs shrink-0"
+        {/* Bulk Export Button */}
+        {completedTables.length > 0 && (
+          <button
+            onClick={() => {
+              const tablesToExport = selectedCount > 0 
+                ? completedTables.filter(t => selectedForMerge[t.id])
+                : completedTables;
+              exportAllToExcel(tablesToExport);
+            }}
+            className="w-full mb-3 flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 rounded-xl transition-all shadow-md shadow-emerald-600/10 dark:shadow-none shrink-0 cursor-pointer"
+            title={selectedCount > 0 
+              ? "Export selected sheets as a single multi-sheet Excel file (.xlsx)"
+              : "Export all completed sheets as a single multi-sheet Excel file (.xlsx)"
+            }
           >
-            <Combine className="h-3.5 w-3.5" />
-            <span>Consolidate ({selectedCount})</span>
-          </motion.button>
+            <Download className="h-4 w-4" />
+            <span>
+              {selectedCount > 0 
+                ? `Bulk Export Selected (${selectedCount}) to Excel` 
+                : `Bulk Export All (${completedTables.length}) to Excel`
+              }
+            </span>
+          </button>
+        )}
+
+        {/* Select All Toggle for Consolidation */}
+        {completedTables.length > 0 && (
+          <div className="flex items-center justify-between px-2.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/60">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isAllSelected}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  const newSelection: Record<string, boolean> = {};
+                  if (checked) {
+                    allCompletedIds.forEach(id => {
+                      newSelection[id] = true;
+                    });
+                  }
+                  setSelectedForMerge(newSelection);
+                }}
+                className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-slate-700 rounded-sm shrink-0 cursor-pointer"
+              />
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                {isAllSelected ? "Deselect All" : "Select All for Consolidation"}
+              </span>
+            </label>
+            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
+              {selectedCount} / {completedTables.length} selected
+            </span>
+          </div>
         )}
       </div>
-
-      {/* Select All Toggle for Consolidation */}
-      {completedTables.length > 0 && (
-        <div className="flex items-center justify-between px-2.5 py-2 mb-3 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/60">
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={isAllSelected}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                const newSelection: Record<string, boolean> = {};
-                if (checked) {
-                  allCompletedIds.forEach(id => {
-                    newSelection[id] = true;
-                  });
-                }
-                setSelectedForMerge(newSelection);
-              }}
-              className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-slate-700 rounded-sm shrink-0 cursor-pointer"
-            />
-            <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
-              {isAllSelected ? "Deselect All" : "Select All for Consolidation"}
-            </span>
-          </label>
-          <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
-            {selectedCount} / {completedTables.length} selected
-          </span>
-        </div>
-      )}
 
       {/* Table categories list */}
       <div className="grow overflow-y-auto pr-1">

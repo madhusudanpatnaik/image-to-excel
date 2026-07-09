@@ -77,6 +77,34 @@ async function fetchWithRetry(
   }
 }
 
+// Helper to process an array of items with a limited concurrency (e.g. 3 at a time)
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrencyLimit: number,
+  worker: (item: T, index: number) => Promise<void>
+): Promise<void> {
+  let index = 0;
+  const promises: Promise<void>[] = [];
+  
+  async function next(): Promise<void> {
+    if (index >= items.length) return;
+    const currentIdx = index++;
+    const item = items[currentIdx];
+    try {
+      await worker(item, currentIdx);
+    } catch (e) {
+      console.error("Concurrency queue error:", e);
+    }
+    await next();
+  }
+  
+  for (let i = 0; i < Math.min(concurrencyLimit, items.length); i++) {
+    promises.push(next());
+  }
+  
+  await Promise.all(promises);
+}
+
 export default function App() {
   const [tables, setTables] = useState<TableData[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string>('');
@@ -132,8 +160,8 @@ export default function App() {
     setTables(prev => [...newPlaceholders, ...prev]);
     setSelectedTableId(newPlaceholders[0].id);
 
-    // Process each file in parallel concurrently!
-    newPlaceholders.forEach(async (placeholder, idx) => {
+    // Process each file with a concurrency limit of 3 to avoid overwhelming the Gemini API and triggering transient errors
+    runWithConcurrency(newPlaceholders, 3, async (placeholder, idx) => {
       const file = files[idx];
       const controller = new AbortController();
       abortControllersRef.current[placeholder.id] = controller;
@@ -455,7 +483,7 @@ export default function App() {
             </div>
 
             {/* Sidebar Manager */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs grow min-h-[300px]">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs grow min-h-[300px] lg:max-h-[600px] xl:max-h-[700px] flex flex-col overflow-hidden">
               <SidebarList
                 tables={tables}
                 selectedTableId={selectedTableId}

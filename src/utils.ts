@@ -32,6 +32,47 @@ export function exportToExcel(table: TableData) {
   XLSX.writeFile(workbook, `${table.tableName || "extracted_data"}.xlsx`);
 }
 
+export function exportAllToExcel(tables: TableData[]) {
+  const completedTables = tables.filter(t => t.status === 'completed');
+  if (completedTables.length === 0) return;
+
+  const workbook = XLSX.utils.book_new();
+  const usedNames = new Set<string>();
+
+  completedTables.forEach((table, index) => {
+    const sheetData = [table.headers, ...table.rows];
+    const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
+
+    // Clean sheet name (max 31 characters, avoid forbidden characters \ / ? * : [ ])
+    let sheetName = (table.tableName || `Sheet_${index + 1}`)
+      .replace(/[\\\/\?\*:[\]]/g, '')
+      .trim();
+
+    if (!sheetName) {
+      sheetName = `Sheet_${index + 1}`;
+    }
+
+    // Limit base length to 26 characters to guarantee room for unique suffixes
+    if (sheetName.length > 26) {
+      sheetName = sheetName.substring(0, 26);
+    }
+
+    let uniqueName = sheetName;
+    let counter = 1;
+    while (usedNames.has(uniqueName.toLowerCase())) {
+      const suffix = ` (${counter})`;
+      const maxBaseLength = 31 - suffix.length;
+      uniqueName = sheetName.substring(0, maxBaseLength) + suffix;
+      counter++;
+    }
+
+    usedNames.add(uniqueName.toLowerCase());
+    XLSX.utils.book_append_sheet(workbook, worksheet, uniqueName);
+  });
+
+  XLSX.writeFile(workbook, "Bulk_Exported_Tables.xlsx");
+}
+
 export function exportToCSV(table: TableData) {
   const sheetData = [table.headers, ...table.rows];
   const csvContent = sheetData
